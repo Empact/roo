@@ -279,7 +279,6 @@ class Roo::Base
 
   def each(options = {})
     return to_enum(:each, options) unless block_given?
-
     if options.empty?
       1.upto(last_row) do |line|
         yield row(line)
@@ -312,7 +311,8 @@ class Roo::Base
     each do |row|
       line_no += 1
       headers = query.map { |q| row.grep(q)[0] }.compact
-      if headers.length == query.length
+      # DVB: do not require all headers #421
+      if headers.length > 1
         @header_line = line_no
         return return_headers ? headers : line_no
       else
@@ -495,17 +495,24 @@ class Roo::Base
   end
 
   def set_headers(hash = {})
+    # hash contains the header search and column name map
+
     # try to find header row with all values or give an error
     # then create new hash by indexing strings and keeping integers for header array
+    # DVB #421 allow missing header key
     header_row = row_with(hash.values, true)
     @headers = {}
     hash.each_with_index do |(key, _), index|
       @headers[key] = header_index(header_row[index])
     end
+    hash.reject!{ |k,v| @headers.grep(v).empty?}
   end
 
   def header_index(query)
-    row(@header_line).index(query) + first_column
+    # DVB #421 allow missing header key
+    if row(@header_line).index(query).present?
+      row(@header_line).index(query) + first_column
+    end
   end
 
   def set_value(row, col, value, sheet = default_sheet)
