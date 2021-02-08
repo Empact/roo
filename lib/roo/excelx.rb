@@ -40,8 +40,9 @@ module Roo
       sheet_options = {}
       sheet_options[:expand_merged_ranges] = (options[:expand_merged_ranges] || false)
       sheet_options[:no_hyperlinks] = (options[:no_hyperlinks] || false)
+      sheet_options[:empty_cell] = (options[:empty_cell] || false)
       shared_options = {}
-        
+
       shared_options[:disable_html_wrapper] = (options[:disable_html_wrapper] || false)
       unless is_stream?(filename_or_stream)
         file_type_check(filename_or_stream, %w[.xlsx .xlsm], 'an Excel 2007', file_warning, packed)
@@ -59,16 +60,17 @@ module Roo
       @filename = local_filename(filename_or_stream, @tmpdir, packed)
       process_zipfile(@filename || filename_or_stream)
 
-      @sheet_names = workbook.sheets.map do |sheet|
-        unless options[:only_visible_sheets] && sheet['state'] == 'hidden'
-          sheet['name']
-        end
-      end.compact
+      @sheet_names = []
       @sheets = []
-      @sheets_by_name = Hash[@sheet_names.map.with_index do |sheet_name, n|
-        @sheets[n] = Sheet.new(sheet_name, @shared, n, sheet_options)
-        [sheet_name, @sheets[n]]
-      end]
+      @sheets_by_name = {}
+
+      workbook.sheets.each_with_index do |sheet, index|
+        next if options[:only_visible_sheets] && sheet['state'] == 'hidden'
+
+        sheet_name = sheet['name']
+        @sheet_names << sheet_name
+        @sheets_by_name[sheet_name] = @sheets[index] = Sheet.new(sheet_name, @shared, index, sheet_options)
+      end
 
       if cell_max
         cell_count = ::Roo::Utils.num_cells_in_range(sheet_for(options.delete(:sheet)).dimensions)
@@ -333,7 +335,7 @@ module Roo
 
       wb.extract(path)
       workbook_doc = Roo::Utils.load_xml(path).remove_namespaces!
-      workbook_doc.xpath('//sheet').map { |s| s.attributes['id'].value }
+      workbook_doc.xpath('//sheet').map { |s| s['id'] }
     end
 
     # Internal
@@ -359,14 +361,11 @@ module Roo
       rels_doc = Roo::Utils.load_xml(path).remove_namespaces!
 
       relationships = rels_doc.xpath('//Relationship').select do |relationship|
-        worksheet_types.include? relationship.attributes['Type'].value
+        worksheet_types.include? relationship['Type']
       end
 
-      relationships.inject({}) do |hash, relationship|
-        attributes = relationship.attributes
-        id = attributes['Id']
-        hash[id.value] = attributes['Target'].value
-        hash
+      relationships.each_with_object({}) do |relationship, hash|
+        hash[relationship['Id']] = relationship['Target']
       end
     end
 
@@ -463,7 +462,7 @@ module Roo
     end
 
     def safe_send(object, method, *args)
-      object.send(method, *args) if object && object.respond_to?(method)
+      object.send(method, *args) if object&.respond_to?(method)
     end
 
     def worksheet_types

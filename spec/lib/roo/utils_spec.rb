@@ -90,26 +90,39 @@ RSpec.describe ::Roo::Utils do
     end
   end
 
+  context '.coordinates_in_range' do
+    it "returns the expected result" do
+      expect(described_class.coordinates_in_range('').to_a).to eq []
+      expect(described_class.coordinates_in_range('B2').to_a).to eq [[2, 2]]
+      expect(described_class.coordinates_in_range('D2:G3').to_a).to eq [[2, 4], [2, 5], [2, 6], [2, 7], [3, 4], [3, 5], [3, 6], [3, 7]]
+      expect(described_class.coordinates_in_range('G3:D2').to_a).to eq []
+    end
+
+    it "raises an error when appropriate" do
+      expect { described_class.coordinates_in_range('D2:G3:I5').to_a }.to raise_error(ArgumentError)
+    end
+  end
+
   context '.load_xml' do
     it 'returns the expected result' do
       expect(described_class.load_xml('test/files/sheet1.xml')).to be_a(Nokogiri::XML::Document)
       expect(described_class.load_xml('test/files/sheet1.xml').
                  remove_namespaces!.xpath("/worksheet/dimension").map do |dim|
-                  dim.attributes["ref"].value end.first).to eq "A1:B11"
+                  dim["ref"] end.first).to eq "A1:B11"
     end
   end
 
   context '.each_element' do
     it 'returns the expected result' do
       described_class.each_element('test/files/sheet1.xml', 'dimension') do |dim|
-        expect(dim.attributes["ref"].value).to eq "A1:B11"
+        expect(dim["ref"]).to eq "A1:B11"
       end
       rows = []
       described_class.each_element('test/files/sheet1.xml', 'row') do |row|
         rows << row
       end
       expect(rows.size).to eq 11
-      expect(rows[2].attributes["r"].value).to eq "3"
+      expect(rows[2]["r"]).to eq "3"
     end
   end
 end

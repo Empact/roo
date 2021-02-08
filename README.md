@@ -18,7 +18,7 @@ Install as a gem
 Or add it to your Gemfile
 
 ```ruby
-gem "roo", "~> 2.7.0"
+gem "roo", "~> 2.8.0"
 ```
 ## Usage
 
@@ -261,7 +261,7 @@ ods.formula('A', 2)
 csv = Roo::CSV.new("mycsv.csv")
 ```
 
-Because Roo uses the [standard CSV library](), you can use options available to that library to parse csv files. You can pass options using the ``csv_options`` key.
+Because Roo uses the standard CSV library, you can use options available to that library to parse csv files. You can pass options using the ``csv_options`` key.
 
 For instance, you can load tab-delimited files (``.tsv``), and you can use a particular encoding when opening the file.
 
@@ -274,6 +274,18 @@ csv = Roo::CSV.new("mytsv.tsv", csv_options: {col_sep: "\t"})
 csv = Roo::CSV.new("mycsv.csv", csv_options: {encoding: Encoding::ISO_8859_1})
 ```
 
+You can also open csv files through the Roo::Spreadsheet class (useful if you accept both CSV and Excel types from a user file upload, for example).
+
+```ruby
+# Load a spreadsheet from a file path
+# Roo figures out the right parser based on file extension
+spreadsheet = Roo::Spreadsheet.open(csv_or_xlsx_file)
+
+# Load a csv and auto-strip the BOM (byte order mark)
+# csv files saved from MS Excel typically have the BOM marker at the beginning of the file
+spreadsheet = Roo::Spreadsheet.open("mycsv.csv", { csv_options: { encoding: 'bom|utf-8' } })
+```
+
 ## Upgrading from Roo 1.13.x
 If you use ``.xls`` or Google spreadsheets, you will need to install ``roo-xls`` or ``roo-google`` to continue using that functionality.
 
@@ -283,7 +295,7 @@ Roo's public methods have stayed relatively consistent between 1.13.x and 2.0.0,
 
 ## Contributing
 ### Features
-1. Fork it ( https://github.com/[my-github-username]/roo/fork )
+1. Fork it ( https://github.com/roo-rb/roo/fork )
 2. Install it (`bundle install --with local_development`)
 3. Create your feature branch (`git checkout -b my-new-feature`)
 4. Commit your changes (`git commit -am 'My new feature'`)
@@ -299,9 +311,6 @@ You can run the tests/examples with Rspec like reporters by running
 
 Roo also has a few tests that take a long time (5+ seconds). To run these, use
 `LONG_RUN=true bundle exec rake`
-
-When testing using Ruby 2.0 or 2.1, use this command:
-`BUNDLE_GEMFILE=Gemfile_ruby2 bundle exec rake`
 
 ### Issues
 

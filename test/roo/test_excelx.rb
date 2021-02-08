@@ -3,7 +3,7 @@ require "test_helper"
 class TestRworkbookExcelx < Minitest::Test
   def test_download_uri_with_invalid_host
     assert_raises(RuntimeError) do
-      Roo::Excelx.new("http://example.com/file.xlsx")
+      Roo::Excelx.new("http://examples.com/file.xlsx")
     end
   end
 
@@ -131,6 +131,20 @@ class TestRworkbookExcelx < Minitest::Test
       rows, cols, conditional, expected_value = data.values
       assert_cell_range_values(xlsx, rows, cols, conditional, expected_value)
     end
+  end
+
+  def test_expand_merged_range_doesnt_insert_nil_values
+    options = { expand_merged_ranges: true }
+    xlsx = roo_class.new(File.join(TESTDIR, "merged_ranges.xlsx"), options)
+
+    refute_includes xlsx.sheet_for(0).cells.values, nil, "`nil` was copied into the cells hash from an empty merged range"
+  end
+
+  def test_expand_merged_range_doesnt_raise_issue_506
+    # Issue 506 sent an example test.xlsx file that would raise an error upon parsing.
+    xl = Roo::Spreadsheet.open(File.join(TESTDIR, "expand_merged_ranges_issue_506.xlsx"), expand_merged_ranges: true)
+    data = xl.parse(one: /one/i, two: /two/i, clean: true)
+    assert_equal [{:one=>"John", :two=>"Johnson"}, {:one=>"Sam", :two=>nil}, {:one=>"Dave", :two=>nil}], data
   end
 
   def test_noexpand_merged_range
@@ -302,6 +316,11 @@ class TestRworkbookExcelx < Minitest::Test
     end
   end
 
+  def test_handles_link_without_hyperlink
+    workbook = Roo::Spreadsheet.open(File.join(TESTDIR, "bad_link.xlsx"))
+    assert_equal "Test", workbook.cell(1, 1)
+  end
+
   # Excel has two base date formats one from 1900 and the other from 1904.
   # see #test_base_dates_in_excel
   def test_base_dates_in_excelx
@@ -313,6 +332,13 @@ class TestRworkbookExcelx < Minitest::Test
       assert_equal Date.new(2009, 06, 15), workbook.cell(1, 1)
       assert_equal :date, workbook.celltype(1, 1)
     end
+  end
+
+  def test_parsing_xlsx_with_richtext
+    xlsx = roo_class.new(File.join(TESTDIR, "richtext_example.xlsx"))
+
+    assert_equal "Example richtext", xlsx.cell("a", 1)
+    assert_equal "Example richtext", xlsx.cell("b", 1)
   end
 
   def roo_class

@@ -86,6 +86,14 @@ describe Roo::Excelx do
     end
   end
 
+  describe 'for a workbook with hidden sheets' do
+    let(:path) { 'test/files/hidden_sheets.xlsx' }
+
+    it 'returns the cell contents from the visible sheet' do
+      expect(Roo::Excelx.new(path, only_visible_sheets: true).cell('A', 1)).to eq "visible sheet 1"
+    end
+  end
+
   describe '#parse' do
     let(:path) { 'test/files/numeric-link.xlsx' }
 
@@ -320,6 +328,18 @@ describe Roo::Excelx do
     end
   end
 
+  describe '#row' do
+    context 'integers with leading zero'
+      let(:path) { 'test/files/number_with_zero_prefix.xlsx' }
+
+      it 'returns base 10 integer' do
+        (1..50).each do |row_index|
+          range_start = (row_index - 1) * 20 + 1
+          expect(subject.row(row_index)).to eq (range_start..(range_start+19)).to_a
+        end
+      end
+  end
+
   describe '#excelx_format' do
     let(:path) { 'test/files/style.xlsx' }
 
@@ -367,14 +387,50 @@ describe Roo::Excelx do
       expect(subject.hyperlink?(1, 1)).to eq true
       expect(subject.hyperlink?(1, 2)).to eq false
     end
+
+    context 'defined on cell range' do
+     let(:path) { 'test/files/cell-range-link.xlsx' }
+
+      it 'returns the expected result' do
+        [[false]*3, *[[true, true, false]]*4, [false]*3].each.with_index(1) do |row, row_index|
+          row.each.with_index(1) do |value, col_index|
+            expect(subject.hyperlink?(row_index, col_index)).to eq(value)
+          end
+        end
+      end
+    end
   end
 
   describe '#hyperlink' do
-    let(:path) { 'test/files/link.xlsx' }
+    context 'defined on cell range' do
+     let(:path) { 'test/files/cell-range-link.xlsx' }
 
-    it 'returns the expected result' do
-      expect(subject.hyperlink(1, 1)).to eq "http://www.google.com"
-      expect(subject.hyperlink(1, 2)).to eq nil
+      it 'returns the expected result' do
+        link = "http://www.google.com"
+        [[nil]*3, *[[link, link, nil]]*4, [nil]*3].each.with_index(1) do |row, row_index|
+          row.each.with_index(1) do |value, col_index|
+            expect(subject.hyperlink(row_index, col_index)).to eq(value)
+          end
+        end
+      end
+    end
+
+    context 'without location' do
+      let(:path) { 'test/files/link.xlsx' }
+
+      it 'returns the expected result' do
+        expect(subject.hyperlink(1, 1)).to eq "http://www.google.com"
+        expect(subject.hyperlink(1, 2)).to eq nil
+      end
+    end
+
+    context 'with location' do
+      let(:path) { 'test/files/link_with_location.xlsx' }
+
+      it 'returns the expected result' do
+        expect(subject.hyperlink(1, 1)).to eq "http://www.google.com/#hey"
+        expect(subject.hyperlink(1, 2)).to eq nil
+      end
     end
   end
 
@@ -498,7 +554,7 @@ describe Roo::Excelx do
   describe '#html_strings' do
     describe "HTML Parsing Enabling" do
       let(:path) { 'test/files/html_strings_formatting.xlsx' }
-  
+
       it 'returns the expected result' do
         expect(subject.excelx_value(1, 1, "Sheet1")).to eq("This has no formatting.")
         expect(subject.excelx_value(2, 1, "Sheet1")).to eq("<html>This has<b> bold </b>formatting.</html>")
@@ -506,7 +562,7 @@ describe Roo::Excelx do
         expect(subject.excelx_value(2, 3, "Sheet1")).to eq("<html>This has <u>underline</u> format.</html>")
         expect(subject.excelx_value(2, 4, "Sheet1")).to eq("<html>Superscript. x<sup>123</sup></html>")
         expect(subject.excelx_value(2, 5, "Sheet1")).to eq("<html>SubScript.  T<sub>j</sub></html>")
-  
+
         expect(subject.excelx_value(3, 1, "Sheet1")).to eq("<html>Bold, italics <b><i>together</i></b>.</html>")
         expect(subject.excelx_value(3, 2, "Sheet1")).to eq("<html>Bold, Underline <b><u>together</u></b>.</html>")
         expect(subject.excelx_value(3, 3, "Sheet1")).to eq("<html>Bold, Superscript. <b>x</b><sup><b>N</b></sup></html>")
@@ -575,7 +631,7 @@ describe 'Roo::Excelx with options set' do
   describe '#html_strings' do
     describe "HTML Parsing Disabled" do
       let(:path) { 'test/files/html_strings_formatting.xlsx' }
-  
+
       it 'returns the expected result' do
         expect(subject.excelx_value(1, 1, "Sheet1")).to eq("This has no formatting.")
         expect(subject.excelx_value(2, 1, "Sheet1")).to eq("This has bold formatting.")
@@ -583,7 +639,7 @@ describe 'Roo::Excelx with options set' do
         expect(subject.excelx_value(2, 3, "Sheet1")).to eq("This has underline format.")
         expect(subject.excelx_value(2, 4, "Sheet1")).to eq("Superscript. x123")
         expect(subject.excelx_value(2, 5, "Sheet1")).to eq("SubScript.  Tj")
-  
+
         expect(subject.excelx_value(3, 1, "Sheet1")).to eq("Bold, italics together.")
         expect(subject.excelx_value(3, 2, "Sheet1")).to eq("Bold, Underline together.")
         expect(subject.excelx_value(3, 3, "Sheet1")).to eq("Bold, Superscript. xN")

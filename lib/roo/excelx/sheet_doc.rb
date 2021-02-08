@@ -22,7 +22,7 @@ module Roo
 
       def hyperlinks(relationships)
         # If you're sure you're not going to need this hyperlinks you can discard it
-        @hyperlinks ||= if @options[:no_hyperlinks]
+        @hyperlinks ||= if @options[:no_hyperlinks] || !relationships.include_type?("hyperlink")
           {}
         else
           extract_hyperlinks(relationships)
@@ -46,7 +46,7 @@ module Roo
       def each_cell(row_xml)
         return [] unless row_xml
         row_xml.children.each do |cell_element|
-          coordinate = ::Roo::Utils.extract_coordinate(cell_element[COMMON_STRINGS[:r]])
+          coordinate = ::Roo::Utils.extract_coordinate(cell_element["r"])
           hyperlinks = hyperlinks(@relationships)[coordinate]
 
           yield cell_from_xml(cell_element, hyperlinks, coordinate)
@@ -78,32 +78,30 @@ module Roo
       #             </c>
       # hyperlink - a String for the hyperlink for the cell or nil when no
       #             hyperlink is present.
+      # coordinate - a Roo::Excelx::Coordinate for the coordinate for the cell
+      #              or nil to extract coordinate from cell_xml.
+      # empty_cell - an Optional Boolean value.
       #
       # Examples
       #
-      #    cells_from_xml(<Nokogiri::XML::Element>, nil)
+      #    cells_from_xml(<Nokogiri::XML::Element>, nil, nil)
       #    # => <Excelx::Cell::String>
       #
       # Returns a type of <Excelx::Cell>.
-      def cell_from_xml(cell_xml, hyperlink, coordinate = nil)
-        coordinate ||= ::Roo::Utils.extract_coordinate(cell_xml[COMMON_STRINGS[:r]])
+      def cell_from_xml(cell_xml, hyperlink, coordinate, empty_cell=true)
+        coordinate ||= ::Roo::Utils.extract_coordinate(cell_xml["r"])
         cell_xml_children = cell_xml.children
-        return Excelx::Cell::Empty.new(coordinate) if cell_xml_children.empty?
+        return create_empty_cell(coordinate, empty_cell) if cell_xml_children.empty?
 
         # NOTE: This is error prone, to_i will silently turn a nil into a 0.
         #       This works by coincidence because Format[0] is General.
-        style = cell_xml[COMMON_STRINGS[:s]].to_i
+        style = cell_xml["s"].to_i
         formula = nil
 
         cell_xml_children.each do |cell|
           case cell.name
           when 'is'
-            content = String.new
-            cell.children.each do |inline_str|
-              if inline_str.name == 't'
-                content << inline_str.content
-              end
-            end
+            content = cell.search('t').map(&:content).join
             unless content.empty?
               return Excelx::Cell.cell_class(:string).new(content, formula, style, hyperlink, coordinate)
             end
@@ -111,13 +109,19 @@ module Roo
             formula = cell.content
           when 'v'
             format = style_format(style)
-            value_type = cell_value_type(cell_xml[COMMON_STRINGS[:t]], format)
+            value_type = cell_value_type(cell_xml["t"], format)
 
             return create_cell_from_value(value_type, cell, formula, format, style, hyperlink, coordinate)
           end
         end
 
-        Excelx::Cell::Empty.new(coordinate)
+        create_empty_cell(coordinate, empty_cell)
+      end
+
+      def create_empty_cell(coordinate, empty_cell)
+        if empty_cell
+          Excelx::Cell::Empty.new(coordinate)
+        end
       end
 
       def create_cell_from_value(value_type, cell, formula, format, style, hyperlink, coordinate)
@@ -172,22 +176,28 @@ module Roo
       def extract_hyperlinks(relationships)
         return {} unless (hyperlinks = doc.xpath('/worksheet/hyperlinks/hyperlink'))
 
-        Hash[hyperlinks.map do |hyperlink|
-          if hyperlink.attribute('id') && (relationship = relationships[hyperlink.attribute('id').text])
-            [::Roo::Utils.ref_to_key(hyperlink.attributes[COMMON_STRINGS[:ref]].to_s), relationship.attribute('Target').text]
+        hyperlinks.each_with_object({}) do |hyperlink, hash|
+          if relationship = relationships[hyperlink['id']]
+            target_link = relationship['Target']
+            target_link += "##{hyperlink['location']}" if hyperlink['location']
+
+            Roo::Utils.coordinates_in_range(hyperlink["ref"].to_s) do |coord|
+              hash[coord] = target_link
+            end
           end
-        end.compact]
+        end
       end
 
       def expand_merged_ranges(cells)
         # Extract merged ranges from xml
         merges = {}
         doc.xpath('/worksheet/mergeCells/mergeCell').each do |mergecell_xml|
-          tl, br = mergecell_xml[COMMON_STRINGS[:ref]].split(/:/).map { |ref| ::Roo::Utils.ref_to_key(ref) }
-          for row in tl[0]..br[0] do
-            for col in tl[1]..br[1] do
-              next if row == tl[0] && col == tl[1]
-              merges[[row, col]] = tl
+          src, dst = mergecell_xml["ref"].split(/:/).map { |ref| ::Roo::Utils.ref_to_key(ref) }
+          next unless cells[src]
+          for row in src[0]..dst[0] do
+            for col in src[1]..dst[1] do
+              next if row == src[0] && col == src[1]
+              merges[[row, col]] = src
             end
           end
         end
@@ -199,9 +209,12 @@ module Roo
 
       def extract_cells(relationships)
         extracted_cells = {}
+        empty_cell = @options[:empty_cell]
+
         doc.xpath('/worksheet/sheetData/row/c').each do |cell_xml|
-          coordinate = ::Roo::Utils.extract_coordinate(cell_xml[COMMON_STRINGS[:r]])
-          extracted_cells[coordinate] = cell_from_xml(cell_xml, hyperlinks(relationships)[coordinate], coordinate)
+          coordinate = ::Roo::Utils.extract_coordinate(cell_xml["r"])
+          cell = cell_from_xml(cell_xml, hyperlinks(relationships)[coordinate], coordinate, empty_cell)
+          extracted_cells[coordinate] = cell if cell
         end
 
         expand_merged_ranges(extracted_cells) if @options[:expand_merged_ranges]
@@ -211,7 +224,7 @@ module Roo
 
       def extract_dimensions
         Roo::Utils.each_element(@path, 'dimension') do |dimension|
-          return dimension.attributes[COMMON_STRINGS[:ref]].value
+          return dimension["ref"]
         end
       end
 
